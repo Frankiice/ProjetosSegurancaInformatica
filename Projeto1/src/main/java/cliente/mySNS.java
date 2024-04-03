@@ -1,23 +1,11 @@
-import javax.crypto.*;
-//import javax.net.SocketFactory;
-//import javax.net.ssl.SSLSocketFactory;
-import javax.crypto.spec.SecretKeySpec;
+package cliente;
 
+import javax.crypto.*;
 import java.io.*;
 import java.net.Socket;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-//import java.util.Scanner;
-import java.util.Map;
-
 public class mySNS {
     public static void main(String[] args) throws Exception,IOException, ClassNotFoundException {
         if (args.length < 5) {
@@ -59,10 +47,13 @@ public class mySNS {
         switch(opcao) {
             case "-sc":
                 DoScOption(args, in, out);
+                //Nao enviar ficheiro, apenas nome e bytes(olhar o do gabriel como exemplo)
+                //Fazer o decifrar
+                //adicionar certificado do utente no keystore do medico
                 break;
             case "-sa":
                 DoSaOption(args, in, out);
-                break
+                break;
             case "-se":
                 //
             case "-g":
@@ -106,16 +97,25 @@ public class mySNS {
         }
     }
 
-    private static void CifraChaveSimetrica(SecretKey secretKey, String nomeFicheiro, String utente) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, IOException {
+    private static void CifraChaveSimetrica(SecretKey secretKey, String nomeFicheiro, String utente) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, IOException, CertificateException, KeyStoreException, UnrecoverableKeyException {
+        //Carregar keystore
+        String keystorePass = "123456";
+        String keystorePath = "src/main/java/cliente/keystores/" + utente + ".keystore";
+        FileInputStream keystoreInputStream = new FileInputStream(keystorePath);
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(keystoreInputStream, keystorePass.toCharArray());
+
         //Gera par de chaves
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(2048);
-        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+        PrivateKey privateKey = (PrivateKey) keyStore.getKey(utente, keystorePass.toCharArray());
+        PublicKey publicKey = keyStore.getCertificate(utente).getPublicKey();
 
         //Cifra a chave simetrica
         Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.ENCRYPT_MODE, keyPair.getPublic());
+        cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+        byte[] chaveCifrada = cipher.doFinal(secretKey.getEncoded());
 
+        //Escreve para um ficheiro
+        FileOutputStream fos = new FileOutputStream(nomeFicheiro + ".chave_secreta." + utente);
         FileInputStream inputFile;
 
         inputFile = new FileInputStream(nomeFicheiro + ".chave_secreta." + utente);
@@ -129,10 +129,9 @@ public class mySNS {
         }
         cos.close();
         inputFile.close();
-
-        fos.write(chaveCifrada);
         fos.close();
     }
+
 
     private static byte[] readFile(File file) {
         try (FileInputStream fileInputStream = new FileInputStream(file)) {
@@ -205,7 +204,7 @@ public class mySNS {
             for (int i = 5; i < args.length; i++) {
                 System.out.println("inside for loop");
                 //verificaAssinatura(args[i], in, out);
-                
+
                 //assinaFicheiro(args[i], aliasMedico, aliasUtente, privateKey, defaultKeystorePassword, in, out);
             }
         } catch (KeyStoreException | NoSuchAlgorithmException | CertificateException | FileNotFoundException | UnrecoverableKeyException e) {
@@ -332,7 +331,7 @@ public class mySNS {
 
     private static PublicKey getPublicKey(String alias, String password) throws Exception {
         // Carregar a keystore do servidor...
-        FileInputStream keystoreInputStream = new FileInputStream("keystores/" + alias + ".keystore");
+        FileInputStream keystoreInputStream = new FileInputStream("src/main/java/cliente/keystores/" + alias + ".keystore");
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(keystoreInputStream, password.toCharArray());
 
@@ -346,7 +345,7 @@ public class mySNS {
     private static PrivateKey getPrivateKey(String alias, String password) throws Exception {
         // Carregar a keystore do usuário
         String keystoreName = alias + ".keystore"; // Supondo que o nome da keystore é passado como argumento
-        String keystorePath = "keystores/" + keystoreName;
+        String keystorePath = "src/main/java/cliente/keystores/" + keystoreName;
         FileInputStream keystoreInputStream = new FileInputStream(keystorePath);
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(keystoreInputStream, password.toCharArray()); // Usando a senha padrão da keystore

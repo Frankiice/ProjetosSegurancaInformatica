@@ -57,7 +57,9 @@ public class mySNS {
             case "-se":
                 //
             case "-g":
-                //
+                System.out.println("inside g option");
+                doGoption(args, in, out);
+                break;
             case "":
         }
 
@@ -186,65 +188,74 @@ public class mySNS {
 
     private static void doGoption(String[] args, ObjectInputStream in, ObjectOutputStream out) throws IOException {
         try {
-            // Envia a quantidade de ficheiros
-            out.writeInt(args.length-5);
+            // comando = mySNS -a ipaddress -u utente -g ficheiro1.pdf ficheiro2.pdf
+            // Send the number of files to the server
+            int numFiles = args.length - 5;
+            String nomeUtente = args[3];
 
-            // Senha padrão da keystore
-            String defaultKeystorePassword = "123456";
-            String aliasUtente = args[3];
+            out.writeUTF(nomeUtente); // 0
+            out.flush();
 
-            String aliasMedico = "silva";
+            out.writeInt(args.length - 5); // 1
+            out.flush();
 
-            // Obter a chave publica da keystore do medico
-            PublicKey publicKey = getPublicKey(aliasMedico, defaultKeystorePassword);
+            // Receive and verify each file
+            for (int i = 0; i < numFiles; i++) {
+                // Send the filename
+                String filename = args[5+i];
+                out.writeUTF(filename); // 2
 
-            // envia quantidade de ficheiros
-            //out.writeInt(args.length-7);
-            // Assinar cada arquivo
-            for (int i = 5; i < args.length; i++) {
-                System.out.println("inside for loop");
-                //verificaAssinatura(args[i], in, out);
+                // Receive the signed file content
+                byte[] signedBytes = (byte[]) in.readObject(); // 4
 
-                //assinaFicheiro(args[i], aliasMedico, aliasUtente, privateKey, defaultKeystorePassword, in, out);
+                // Receive the signature content
+                byte[] signatureBytes = (byte[]) in.readObject(); // 6
+
+                // Nome do medico
+                String medico = in.readUTF(); // 7
+
+                // Verify the signature
+                boolean verified = verificaAssinatura(filename, in, out, signedBytes, signatureBytes, medico);
+
+                // Print verification result
+                if (verified) {
+                    System.out.println("Assinatura verificada com sucesso para o ficheiro: " + filename);
+                } else {
+                    System.out.println("Não foi possivel verificar a assinatura para o ficheiro: " + filename);
+                }
             }
-        } catch (KeyStoreException | NoSuchAlgorithmException | CertificateException | FileNotFoundException | UnrecoverableKeyException e) {
+        } catch (Exception  e) {
             System.out.println("Ocorreu um erro, verifique se existe keystore para o medico e tente novamente");
             System.out.println();
             e.printStackTrace();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
         }
     }
 
-    public static boolean verificaAssinatura(String filename, ObjectInputStream in, ObjectOutputStream out) throws IOException {
-        // Ler o arquivo original
-        File file = new File(filename);
-        FileInputStream fileInputStream = new FileInputStream(file);
-        byte[] fileBytes = new byte[(int) file.length()];
-        fileInputStream.read(fileBytes);
+    private static boolean verificaAssinatura(String filename, ObjectInputStream in, ObjectOutputStream out, byte[] signedBytes, byte[] signatureBytes, String medico) throws IOException, ClassNotFoundException {
+        try {
+            String defaultKeystorePassword = "123456"; // Senha padrão da keystore
 
-        // Ler a assinatura do arquivo
+            // Get the public key of the medico from the keystore
+            PublicKey publicKey = getPublicKey(medico, defaultKeystorePassword);
 
-        //String signatureFilename = (String) in.readUTF();
-        //byte[] signatureBytes = (byte[]) in.readObject();
+            // Create object Signature to verify the signature
+            Signature signature = Signature.getInstance("MD5withRSA");
+            signature.initVerify(publicKey);
 
-        //String signedFilename = (String) in.readUTF();
-        //byte[] signedBytes = (byte[]) in.readObject();
+            // Update the signature with the data of the signed file
+            signature.update(signedBytes);
 
-        //FileInputStream signatureInputStream = new FileInputStream(signatureFilename);
-        //byte[] signatureBytes = new byte[(int) file.length()];
-        //signatureInputStream.read(signatureBytes);
+            // Verify the signature
+            boolean verified = signature.verify(signatureBytes);
 
-        // Criar objeto Signature para verificar a assinatura
-        //Signature signature = Signature.getInstance("MD5withRSA");
-        //signature.initVerify(publicKey);
-
-        // Atualizar a assinatura com os dados do arquivo original
-        //signature.update(fileBytes);
-
-        // Verificar a assinatura
-        //return signature.verify(signatureBytes);
-        return false;
+            return verified;
+        } catch (IOException | ClassNotFoundException | NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            e.printStackTrace();
+            return false;
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            throw new RuntimeException(e);
+        }
     }
     public static void DoSaOption(String [] args, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException {
         try {

@@ -5,6 +5,8 @@ import javax.crypto.spec.SecretKeySpec;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
@@ -47,18 +49,20 @@ public class mySNS {
                 opcao = "-g";
                 break;
             case "-m":
+                opcao = args[6];
                 out.writeObject(args[3]);
                 out.writeObject(args[5]);
                 break;
         }
         //Envia ao servidor o comando a executar
-        out.writeObject(args[6]);
+        out.writeObject(opcao);
         switch(opcao) {
             case "-sc":
                 DoScOption(args, in, out);
                 break;
             case "-sa":
-                //
+                DoSaOption(args, in, out);
+                break
             case "-se":
                 //
             case "-g":
@@ -102,25 +106,16 @@ public class mySNS {
         }
     }
 
-    private static void CifraChaveSimetrica(SecretKey secretKey, String nomeFicheiro, String utente) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, IOException, CertificateException, KeyStoreException, UnrecoverableKeyException {
-        //Carregar keystore
-        String keystorePass = "123456";
-        String keystorePath = "keystores/" + utente + ".keystore";
-        FileInputStream keystoreInputStream = new FileInputStream(keystorePath);
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        keyStore.load(keystoreInputStream, keystorePass.toCharArray());
-
+    private static void CifraChaveSimetrica(SecretKey secretKey, String nomeFicheiro, String utente) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, IOException {
         //Gera par de chaves
-        PrivateKey privateKey = (PrivateKey) keyStore.getKey(utente, keystorePass.toCharArray());
-        PublicKey publicKey = keyStore.getCertificate(utente).getPublicKey();
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
         //Cifra a chave simetrica
         Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.ENCRYPT_MODE, publicKey);
-        byte[] chaveCifrada = cipher.doFinal(secretKey.getEncoded());
+        cipher.init(Cipher.ENCRYPT_MODE, keyPair.getPublic());
 
-        //Escreve para um ficheiro
-        FileOutputStream fos = new FileOutputStream(nomeFicheiro + ".chave_secreta." + utente);
         FileInputStream inputFile;
 
         inputFile = new FileInputStream(nomeFicheiro + ".chave_secreta." + utente);
@@ -134,6 +129,8 @@ public class mySNS {
         }
         cos.close();
         inputFile.close();
+
+        fos.write(chaveCifrada);
         fos.close();
     }
 
@@ -186,4 +183,177 @@ public class mySNS {
         podeCifrar = !(Boolean) in.readObject();
         return podeCifrar;
     }
+    // Gabriel
+
+    private static void doGoption(String[] args, ObjectInputStream in, ObjectOutputStream out) throws IOException {
+        try {
+            // Envia a quantidade de ficheiros
+            out.writeInt(args.length-5);
+
+            // Senha padrão da keystore
+            String defaultKeystorePassword = "123456";
+            String aliasUtente = args[3];
+
+            String aliasMedico = "silva";
+
+            // Obter a chave publica da keystore do medico
+            PublicKey publicKey = getPublicKey(aliasMedico, defaultKeystorePassword);
+
+            // envia quantidade de ficheiros
+            //out.writeInt(args.length-7);
+            // Assinar cada arquivo
+            for (int i = 5; i < args.length; i++) {
+                System.out.println("inside for loop");
+                //verificaAssinatura(args[i], in, out);
+                
+                //assinaFicheiro(args[i], aliasMedico, aliasUtente, privateKey, defaultKeystorePassword, in, out);
+            }
+        } catch (KeyStoreException | NoSuchAlgorithmException | CertificateException | FileNotFoundException | UnrecoverableKeyException e) {
+            System.out.println("Ocorreu um erro, verifique se existe keystore para o medico e tente novamente");
+            System.out.println();
+            e.printStackTrace();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static boolean verificaAssinatura(String filename, ObjectInputStream in, ObjectOutputStream out) throws IOException {
+        // Ler o arquivo original
+        File file = new File(filename);
+        FileInputStream fileInputStream = new FileInputStream(file);
+        byte[] fileBytes = new byte[(int) file.length()];
+        fileInputStream.read(fileBytes);
+
+        // Ler a assinatura do arquivo
+
+        //String signatureFilename = (String) in.readUTF();
+        //byte[] signatureBytes = (byte[]) in.readObject();
+
+        //String signedFilename = (String) in.readUTF();
+        //byte[] signedBytes = (byte[]) in.readObject();
+
+        //FileInputStream signatureInputStream = new FileInputStream(signatureFilename);
+        //byte[] signatureBytes = new byte[(int) file.length()];
+        //signatureInputStream.read(signatureBytes);
+
+        // Criar objeto Signature para verificar a assinatura
+        //Signature signature = Signature.getInstance("MD5withRSA");
+        //signature.initVerify(publicKey);
+
+        // Atualizar a assinatura com os dados do arquivo original
+        //signature.update(fileBytes);
+
+        // Verificar a assinatura
+        //return signature.verify(signatureBytes);
+        return false;
+    }
+    public static void DoSaOption(String [] args, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException {
+        try {
+            String defaultKeystorePassword = "123456"; // Senha padrão da keystore
+            String aliasMedico = args[3];
+            String aliasUtente = args[5];
+
+            // Obter a chave privada da keystore
+            PrivateKey privateKey = getPrivateKey(aliasMedico, defaultKeystorePassword);
+
+            // envia quantidade de ficheiros
+            out.writeInt(args.length-7);
+            // Assinar cada arquivo
+            for (int i = 7; i < args.length; i++) {
+                assinaFicheiro(args[i], aliasMedico, aliasUtente, privateKey, defaultKeystorePassword, in, out);
+            }
+        } catch (KeyStoreException | NoSuchAlgorithmException | CertificateException | FileNotFoundException | UnrecoverableKeyException e) {
+            System.out.println("Ocorreu um erro, verifique se existe keystore para o medico e tente novamente");
+            System.out.println();
+            e.printStackTrace();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void assinaFicheiro(String filename, String aliasMedico, String aliasUtente, PrivateKey privateKey, String keystorePassword, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException {
+
+        try {
+            // Criar objeto Signature para assinar o arquivo
+            Signature signature = Signature.getInstance("MD5withRSA");
+            signature.initSign(privateKey);
+
+            // Ler o arquivo para assinar
+            File file = new File(filename);
+            FileInputStream fileInputStream = new FileInputStream(file);
+            byte[] fileBytes = new byte[(int) file.length()];
+            fileInputStream.read(fileBytes);
+
+            // Atualizar a assinatura com os dados do arquivo
+            signature.update(fileBytes);
+
+            // Gerar a assinatura
+            byte[] signatureBytes = signature.sign();
+            Boolean servidorRecebeu;
+            Boolean ficheiroDuplicado;
+            // Enviar o arquivo assinado para o servidor
+            out.writeUTF(filename + ".assinado");
+            out.flush();
+
+            // Recebe do servidor um boolean que e true caso o ficheiro ja exista no servidor.
+            ficheiroDuplicado = (Boolean) in.readBoolean();
+            if(ficheiroDuplicado)
+            {
+                System.out.println("O ficheiro " + filename + " ja existe no diretorio de " + aliasUtente);
+                return;
+            }
+            else{
+                System.out.println("Ficheiro " + filename + " foi enviado para o servidor no diretorio de " + aliasUtente);
+            }
+
+            out.writeObject(fileBytes);
+            out.flush();
+            servidorRecebeu = (Boolean) in.readBoolean();
+
+            // Enviar a assinatura para o servidor
+            out.writeUTF(filename + ".assinatura." + aliasMedico);
+            out.flush();
+            out.writeObject(signatureBytes);
+            out.flush();
+            servidorRecebeu = (Boolean) in.readBoolean();
+
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void salvaFicheiro(String filename, byte[] fileBytes) throws IOException {
+        try (FileOutputStream fileOutputStream = new FileOutputStream(filename)) {
+            fileOutputStream.write(fileBytes);
+        }
+    }
+    //verificaAssinatura(args[i], aliasMedico, aliasUtente, publicKey, defaultKeystorePassword, in, out);
+
+
+    private static PublicKey getPublicKey(String alias, String password) throws Exception {
+        // Carregar a keystore do servidor...
+        FileInputStream keystoreInputStream = new FileInputStream("keystores/" + alias + ".keystore");
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(keystoreInputStream, password.toCharArray());
+
+        // Obter o certificado do alias especificado...
+        Certificate certificate = keyStore.getCertificate(alias);
+
+        // Retornar a chave pública do certificado...
+        return certificate.getPublicKey();
+    }
+
+    private static PrivateKey getPrivateKey(String alias, String password) throws Exception {
+        // Carregar a keystore do usuário
+        String keystoreName = alias + ".keystore"; // Supondo que o nome da keystore é passado como argumento
+        String keystorePath = "keystores/" + keystoreName;
+        FileInputStream keystoreInputStream = new FileInputStream(keystorePath);
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(keystoreInputStream, password.toCharArray()); // Usando a senha padrão da keystore
+
+        // Obter a chave privada da keystore
+        PrivateKey privateKey = (PrivateKey) keyStore.getKey(alias, password.toCharArray()); // Usando a senha padrão da keystore
+        return privateKey;
+    }
+
 }

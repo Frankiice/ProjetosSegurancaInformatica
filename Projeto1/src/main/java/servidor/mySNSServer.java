@@ -110,11 +110,20 @@ class mySNSServer {
                     case "-se":
                         //
                     case "-g":
-                        qtdFicheiros = inStream.readInt();
-                        //nomeUtente = inStream.readUTF();
-
-                        //TODO verificar nome de ficheiro dentro do for no goption do cliente, e se existir mandar para o cliente o ficheiro
-                        verificaExiste("teste.txt", "maria", qtdFicheiros);
+                        //qtdFicheiros = inStream.readInt();
+                        System.out.println("inside g option");
+                        String utente = inStream.readUTF(); // 0
+                        System.out.println("nome utente:"+utente);
+                        int numFiles = inStream.readInt(); // 1
+                        System.out.println("num files:"+numFiles);
+                        for (int i = 0; i < numFiles; i++) {
+                            String filename = inStream.readUTF(); // 2
+                            // Assuming signature file has the same name as the original file with ".assinatura" extension
+                            String signatureFilename = filename + ".assinatura." + getMedicoName(utente, filename);
+                            String signedFilename = filename + ".assinado";
+                            enviarBytesGoption(utente, signedFilename, signatureFilename, outStream);
+                        }
+                        break;
                     case "":
                 }
 
@@ -264,5 +273,68 @@ class mySNSServer {
         } catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void enviarBytesGoption(String utente, String signedFilename, String signatureFilename, ObjectOutputStream out) {
+        try {
+            System.out.println("Entra no enviarBytesGoption");
+            // Check if both files exist
+            File signedFile = new File("" + utente + "/" + signedFilename);
+            File signatureFile = new File("" + utente + "/" + signatureFilename);
+
+            // Check if the signed file and signature file exist
+            if (!signedFile.exists() || !signatureFile.exists()) {
+                System.out.println("Um ou ambos os ficheiros não existem");
+                return;
+            }
+
+            // Read signed file content
+            byte[] signedBytes = Files.readAllBytes(Paths.get(signedFilename));
+            System.out.println("O conteúdo do ficheiro assinado é: " + new String(signedBytes));
+
+            // Read signature file content
+            byte[] signatureBytes = Files.readAllBytes(Paths.get(signatureFilename));
+
+            // Nome do medico
+            String medicoName = getMedicoName(utente, signatureFilename);
+
+            // Send signed file content to client
+            out.writeObject(signedBytes); // 4
+            out.flush();
+            out.writeObject(signatureBytes); // 6
+            out.flush();
+            out.writeUTF(medicoName); // 7
+            out.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String getMedicoName(String utente, String filename) {
+        // Get the directory of the user
+        File userDir = new File(utente);
+
+        // Check if the user directory exists
+        if (userDir.exists() && userDir.isDirectory()) {
+            // List all files in the user directory
+            File[] files = userDir.listFiles();
+
+            // Iterate through the files
+            for (File file : files) {
+                // Check if the filename starts with the original filename
+                if (file.getName().startsWith(filename)) {
+                    // Split the filename by dots (.)
+                    String[] parts = file.getName().split("\\.");
+
+                    // Check if there are 4 parts after splitting
+                    if (parts.length == 4) {
+                        // Return the third part, which should be the medic's name
+                        return parts[2];
+                    }
+                }
+            }
+        }
+        // Return a default message if the medic's name cannot be found
+        return "Diretorias do utente não existem / Ficheiro não tem nome do médico";
     }
 }

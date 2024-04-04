@@ -88,12 +88,7 @@ class mySNSServer {
                 }
                 //Recebe o comando a se fazer
                 String opcao = "";
-                if(opcaoCliente.equals("-m")){
-                    opcao = (String) inStream.readObject();
-                }
-                else{
-                    opcao = "-g";
-                }
+                opcao = (String) inStream.readObject();
                 int qtdFicheiros = 0;
                 switch(opcao) {
                     case "-sc":
@@ -108,20 +103,29 @@ class mySNSServer {
                         RecebeFicheirosGabriel(nomeUtente, nomeMedico, outStream,inStream, qtdFicheiros);
                         break;
                     case "-se":
+                        break;
                         //
                     case "-g":
                         //qtdFicheiros = inStream.readInt();
                         System.out.println("inside g option");
-                        String utente = inStream.readUTF(); // 0
+                        String utente = inStream.readUTF(); // 1
                         System.out.println("nome utente:"+utente);
-                        int numFiles = inStream.readInt(); // 1
+                        int numFiles = inStream.readInt(); // 2
                         System.out.println("num files:"+numFiles);
                         for (int i = 0; i < numFiles; i++) {
-                            String filename = inStream.readUTF(); // 2
-                            // Assuming signature file has the same name as the original file with ".assinatura" extension
-                            String signatureFilename = filename + ".assinatura." + getMedicoName(utente, filename);
-                            String signedFilename = filename + ".assinado";
-                            enviarBytesGoption(utente, signedFilename, signatureFilename, outStream);
+                            Boolean fileExists = (Boolean) inStream.readObject(); // 1-1 1-2
+                            if(fileExists) {
+                                String filename = (String) inStream.readUTF(); // 3
+                                System.out.println("Verificacao do ficheiro:"+filename);
+                                // Assuming signature file has the same name as the original file with ".assinatura" extension
+                                String signatureFilename = filename + ".assinatura." + getMedicoName(utente, filename);
+                                String signedFilename = filename + ".assinado";
+                                enviarBytesGoption(utente, signedFilename, signatureFilename, outStream);
+                            } else {
+                                System.out.println("O ficheiro não existe no cliente.");
+                                continue;
+                            }
+                            
                         }
                         break;
                     case "":
@@ -279,21 +283,21 @@ class mySNSServer {
         try {
             System.out.println("Entra no enviarBytesGoption");
             // Check if both files exist
-            File signedFile = new File("" + utente + "/" + signedFilename);
-            File signatureFile = new File("" + utente + "/" + signatureFilename);
+            File signedFile = new File(utente + "/" + signedFilename);
+            File signatureFile = new File(utente + "/" + signatureFilename);
 
             // Check if the signed file and signature file exist
             if (!signedFile.exists() || !signatureFile.exists()) {
                 System.out.println("Um ou ambos os ficheiros não existem");
                 return;
             }
+            System.out.println("Todos os ficheiros .assinado e .assinatura existem");
 
             // Read signed file content
-            byte[] signedBytes = Files.readAllBytes(Paths.get(signedFilename));
-            System.out.println("O conteúdo do ficheiro assinado é: " + new String(signedBytes));
+            byte[] signedBytes = Files.readAllBytes(Paths.get(utente, signedFilename));
 
             // Read signature file content
-            byte[] signatureBytes = Files.readAllBytes(Paths.get(signatureFilename));
+            byte[] signatureBytes = Files.readAllBytes(Paths.get(utente, signatureFilename));
 
             // Nome do medico
             String medicoName = getMedicoName(utente, signatureFilename);
@@ -329,7 +333,7 @@ class mySNSServer {
                     // Check if there are 4 parts after splitting
                     if (parts.length == 4) {
                         // Return the third part, which should be the medic's name
-                        return parts[2];
+                        return parts[3];
                     }
                 }
             }

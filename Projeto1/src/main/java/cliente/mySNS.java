@@ -25,11 +25,18 @@ public class mySNS {
         //criar socket para ligar ao server
         Socket echoSocket = new Socket(parts[0], Integer.parseInt(parts[1])); //127.0.0.1
         //criar stream object
-        ObjectInputStream in = new ObjectInputStream(echoSocket.getInputStream());
-        ObjectOutputStream out = new ObjectOutputStream(echoSocket.getOutputStream());
+        // Set up ObjectInputStream with a larger buffer size
+        BufferedInputStream bufferedInputStream = new BufferedInputStream(echoSocket.getInputStream(), 8192);
+        ObjectInputStream in = new ObjectInputStream(bufferedInputStream);
+
+        // Set up ObjectOutputStream with a larger buffer size
+        BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(echoSocket.getOutputStream(), 8192);
+        ObjectOutputStream out = new ObjectOutputStream(bufferedOutputStream);
+        // ObjectInputStream in = new ObjectInputStream(echoSocket.getInputStream());
+        // ObjectOutputStream out = new ObjectOutputStream(echoSocket.getOutputStream());
 
         String opcaoUsername = args[2];
-        String opcao = args[6];
+        String opcao = "";
         out.writeObject(opcaoUsername);
         switch (opcaoUsername){
             case "-u":
@@ -186,46 +193,63 @@ public class mySNS {
     }
     // Gabriel
 
-    private static void doGoption(String[] args, ObjectInputStream in, ObjectOutputStream out) throws IOException {
+    private static void doGoption(String[] args, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassCastException {
         try {
             // comando = mySNS -a ipaddress -u utente -g ficheiro1.pdf ficheiro2.pdf
-            // Send the number of files to the server
+            // Enviar o número de ficheiros para o servidor
             int numFiles = args.length - 5;
             String nomeUtente = args[3];
 
-            out.writeUTF(nomeUtente); // 0
+            out.writeUTF(nomeUtente); // 1
             out.flush();
 
-            out.writeInt(args.length - 5); // 1
+            out.writeInt(args.length - 5); // 2
             out.flush();
 
-            // Receive and verify each file
+            // Receber e verificar cada ficheiro
             for (int i = 0; i < numFiles; i++) {
-                // Send the filename
+                // Enviar o nome do ficheiro
                 String filename = args[5+i];
-                out.writeUTF(filename); // 2
+                System.out.println("Verificação do ficheiro: " + filename + "...");
 
-                // Receive the signed file content
-                byte[] signedBytes = (byte[]) in.readObject(); // 4
+                // Verificar se o ficheiro existe localmente
+                File file = new File(filename);
+                if (!file.exists()) {
+                    System.out.println("O ficheiro " + filename + " não existe localmente.");
+                    out.writeObject(false); // 1-1
+                    out.flush();
+                    continue; // Saltar o processamento deste ficheiro
+                }
 
-                // Receive the signature content
-                byte[] signatureBytes = (byte[]) in.readObject(); // 6
+                out.writeObject(true); // 1-2
+                out.flush();
+                out.writeUTF(filename); // 3
+                out.flush();
 
-                // Nome do medico
-                String medico = in.readUTF(); // 7
+                // Ignorar lol
+                Object receivedObject = in.readObject();
 
-                // Verify the signature
+                // Receber o conteúdo do ficheiro assinado
+                byte[] signedBytes = (byte[]) in.readObject(); // 3
+
+                // Receber o conteúdo da assinatura
+                byte[] signatureBytes = (byte[]) in.readObject(); // 4
+
+                // Nome do médico
+                String medico = in.readUTF(); // 5
+
+                // Verificar a assinatura
                 boolean verified = verificaAssinatura(filename, in, out, signedBytes, signatureBytes, medico);
 
-                // Print verification result
+                // Imprimir o resultado da verificação
                 if (verified) {
                     System.out.println("Assinatura verificada com sucesso para o ficheiro: " + filename);
                 } else {
-                    System.out.println("Não foi possivel verificar a assinatura para o ficheiro: " + filename);
+                    System.out.println("Não foi possível verificar a assinatura para o ficheiro: " + filename);
                 }
             }
         } catch (Exception  e) {
-            System.out.println("Ocorreu um erro, verifique se existe keystore para o medico e tente novamente");
+            System.out.println("Ocorreu um erro, verifique se existe keystore para o médico / se o tamanho do ficheiro é maior do que o esperado e tente novamente");
             System.out.println();
             e.printStackTrace();
         }
@@ -342,7 +366,7 @@ public class mySNS {
 
     private static PublicKey getPublicKey(String alias, String password) throws Exception {
         // Carregar a keystore do servidor...
-        FileInputStream keystoreInputStream = new FileInputStream("src/main/java/cliente/keystores/" + alias + ".keystore");
+        FileInputStream keystoreInputStream = new FileInputStream("keystores/" + alias + ".keystore");
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(keystoreInputStream, password.toCharArray());
 
@@ -356,7 +380,7 @@ public class mySNS {
     private static PrivateKey getPrivateKey(String alias, String password) throws Exception {
         // Carregar a keystore do usuário
         String keystoreName = alias + ".keystore"; // Supondo que o nome da keystore é passado como argumento
-        String keystorePath = "src/main/java/cliente/keystores/" + keystoreName;
+        String keystorePath = "keystores/" + keystoreName;
         FileInputStream keystoreInputStream = new FileInputStream(keystorePath);
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(keystoreInputStream, password.toCharArray()); // Usando a senha padrão da keystore

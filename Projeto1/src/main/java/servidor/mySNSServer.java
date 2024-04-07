@@ -69,7 +69,7 @@ class mySNSServer {
                 String opcaoCliente = (String) inStream.readObject();
                 String nomeUtente = "";
                 String nomeMedico = "";
-                if(!opcaoCliente.isBlank()) {
+                if(!opcaoCliente.equals("")) {
                     if(opcaoCliente.equals("-m")) {
                         nomeMedico = (String) inStream.readObject();
                         nomeUtente = (String) inStream.readObject();
@@ -90,31 +90,23 @@ class mySNSServer {
                 String opcao = "";
                 opcao = (String) inStream.readObject();
                 int qtdFicheiros = 0;
-                switch(opcao) {
-                    case "-sc":
-                        qtdFicheiros = inStream.readInt();
-                        // Recebe ficheiro cifrado
-                        recebeFicheiros(nomeUtente,nomeMedico,outStream,inStream, qtdFicheiros);
+                if ("-sc".equals(opcao) || "-sa".equals(opcao) || "-se".equals(opcao)) {
+                    qtdFicheiros = inStream.readInt();
+                    // Recebe ficheiro cifrado, assinado ou seguro
+                    recebeFicheiros(nomeUtente, nomeMedico, outStream, inStream, qtdFicheiros);
+                    if ("-sc".equals(opcao)) {
                         // Recebe chave secreta
-                        recebeFicheiros(nomeUtente, nomeMedico, outStream,inStream, qtdFicheiros);
-                        break;
-                    case "-sa":
-                        qtdFicheiros = inStream.readInt();
-                        // Recebe ficheiro assinado
-                        recebeFicheiros(nomeUtente, nomeMedico, outStream,inStream, qtdFicheiros);
+                        recebeFicheiros(nomeUtente, nomeMedico, outStream, inStream, qtdFicheiros);
+                    } else if ("-sa".equals(opcao)) {
                         // Recebe assinatura do ficheiro
-                        recebeFicheiros(nomeUtente, nomeMedico, outStream,inStream, qtdFicheiros);
-                        break;
-                    case "-se":
-                        qtdFicheiros = inStream.readInt();
-                        // Recebe a assinatura do ficheiro
-                        recebeFicheiros(nomeUtente, nomeMedico, outStream,inStream, qtdFicheiros);
-                        // Recebe o ficheiro seguro
-                        recebeFicheiros(nomeUtente, nomeMedico, outStream,inStream, qtdFicheiros);
+                        recebeFicheiros(nomeUtente, nomeMedico, outStream, inStream, qtdFicheiros);
+                    } else if ("-se".equals(opcao)) {
+                        // Recebe ficheiro seguro
+                        recebeFicheiros(nomeUtente, nomeMedico, outStream, inStream, qtdFicheiros);
                         // Recebe a chave secreta
-                        recebeFicheiros(nomeUtente, nomeMedico, outStream,inStream, qtdFicheiros);
-                        break;
-                    case "-g":
+                        recebeFicheiros(nomeUtente, nomeMedico, outStream, inStream, qtdFicheiros);
+                    }
+                    } else if ("-g".equals(opcao)) {
                         //qtdFicheiros = inStream.readInt();
                         String utente = inStream.readUTF(); // 1
                         System.out.println("nome utente:"+utente);
@@ -129,6 +121,7 @@ class mySNSServer {
                             } else {
                                 nomeMedico = "";
                             }
+                            System.out.println(nomeMedico);
 
                             // Assuming signature file has the same name as the original file with ".assinatura" extension
                             String signatureFilename = filename + ".assinatura." + nomeMedico;
@@ -146,6 +139,7 @@ class mySNSServer {
                             Boolean signatureSignedCheck = false;
                             Boolean chaveCifradoCheck = false;
                             Boolean seguroCheck = false;
+                            System.out.println("segurocheck antes dos ifs" + seguroCheck);
 
                             if (verifiedSignature && verifiedSigned) {
                                 signatureSignedCheck = true;
@@ -169,6 +163,7 @@ class mySNSServer {
                             }
 
                             if (verifiedSeguro && verifiedChaveSecreta && verifiedSignature) {
+                                System.out.println("Entra no if do seguro ou seja seguroCheck TRUE");
                                 seguroCheck = true;
                                 outStream.writeBoolean(seguroCheck);
                                 outStream.flush();
@@ -176,12 +171,14 @@ class mySNSServer {
                                 EnviaFicheiroSeguro(filename, utente, nomeMedico, outStream, inStream);
                                 EnviaFicheiroAssinatura(filename, utente, nomeMedico, outStream, inStream);
                             } else {
+                                System.out.println("Entra no else do seguro ou seja seguroCheck FALSE");
+                                System.out.println(verifiedSeguro);
+                                System.out.println(verifiedChaveSecreta);
+                                System.out.println(verifiedSignature);
                                 outStream.writeBoolean(seguroCheck);
                                 outStream.flush();
                             }
-                        }
-                        break;
-                    case "":
+                    }
                 }
 
             } catch (IOException e) {
@@ -192,7 +189,7 @@ class mySNSServer {
             }
         }
         private boolean verificaFicheiroServer(String filename, String utente, String medico) throws IOException {
-            File diretorio = new File(utente + "/" + filename);
+            File diretorio = new File("src/main/java/servidor/"+utente + "/" + filename);
             if(diretorio.exists()){
                 return true;
             }
@@ -201,7 +198,8 @@ class mySNSServer {
             }
         }
         private void salvarFicheiro(String filename, byte[] fileBytes, String utente) {
-            try (FileOutputStream fileOutputStream = new FileOutputStream(utente+ "/" +filename)) {
+            try {
+                FileOutputStream fileOutputStream = new FileOutputStream("src/main/java/servidor/"+utente+ "/" +filename);
                 fileOutputStream.write(fileBytes);
             } catch (IOException e) {
                 e.printStackTrace();
@@ -249,30 +247,30 @@ class mySNSServer {
             }
         }
 
-        private boolean verificaExiste(String filename, String utente, int qtdFicheiros){
-            File directory = new File("utente/");
+        // private boolean verificaExiste(String filename, String utente, int qtdFicheiros){
+        //     File directory = new File("utente/");
 
-            // Define a FilenameFilter to accept files with names containing "teste.txt"
-            FilenameFilter filter = new FilenameFilter() {
-                public boolean accept(File dir, String name) {
-                    return name.startsWith(filename);
-                }
-            };
+        //     // Define a FilenameFilter to accept files with names containing "teste.txt"
+        //     FilenameFilter filter = new FilenameFilter() {
+        //         public boolean accept(File dir, String name) {
+        //             return name.startsWith(filename);
+        //         }
+        //     };
 
-            // List files in the directory matching the filter
-            File[] matchingFiles = directory.listFiles(filter);
+        //     // List files in the directory matching the filter
+        //     File[] matchingFiles = directory.listFiles(filter);
 
-            // Check if any matching file is found
-            if (matchingFiles != null && matchingFiles.length > 0) {
-                System.out.println("Files matching the pattern found:");
-                for (File file : matchingFiles) {
-                    System.out.println(file.getName());
-                }
-            } else {
-                System.out.println("No files matching the pattern found.");
-            }
-            return true;
-        }
+        //     // Check if any matching file is found
+        //     if (matchingFiles != null && matchingFiles.length > 0) {
+        //         System.out.println("Files matching the pattern found:");
+        //         for (File file : matchingFiles) {
+        //             System.out.println(file.getName());
+        //         }
+        //     } else {
+        //         System.out.println("No files matching the pattern found.");
+        //     }
+        //     return true;
+        // }
 
 
     }
@@ -285,7 +283,7 @@ class mySNSServer {
         }
     }
     public static void criaDiretorio(String nomeUtente){
-        File diretorio = new File(nomeUtente);
+        File diretorio = new File("src/main/java/servidor/"+nomeUtente);
 
         if (!diretorio.exists()) {
             // Se o diretório não existir, crie-o
@@ -304,8 +302,8 @@ class mySNSServer {
         try {
             System.out.println("Entra no enviarBytesGoption");
             // Check if both files exist
-            File signedFile = new File(utente + "/" + signedFilename);
-            File signatureFile = new File(utente + "/" + signatureFilename);
+            File signedFile = new File("src/main/java/servidor/" + utente + "/" + signedFilename);
+            File signatureFile = new File("src/main/java/servidor/" + utente + "/" + signatureFilename);
 
             // Check if the signed file and signature file exist
             if (!signedFile.exists() || !signatureFile.exists()) {
@@ -322,10 +320,10 @@ class mySNSServer {
             }
 
             // Read signed file content
-            byte[] signedBytes = Files.readAllBytes(Paths.get(utente, signedFilename));
+            byte[] signedBytes = Files.readAllBytes(Paths.get("src/main/java/servidor/"+utente, signedFilename));
 
             // Read signature file content
-            byte[] signatureBytes = Files.readAllBytes(Paths.get(utente, signatureFilename));
+            byte[] signatureBytes = Files.readAllBytes(Paths.get("src/main/java/servidor/"+utente, signatureFilename));
 
             // Nome do medico
             String medicoName = getMedicoName(utente, signatureFilename);
@@ -344,7 +342,7 @@ class mySNSServer {
 
     private String getMedicoName(String utente, String filename) {
         // Get the directory of the user
-        File userDir = new File(utente);
+        File userDir = new File("src/main/java/servidor/"+utente);
 
         // Check if the user directory exists
         if (userDir.exists() && userDir.isDirectory()) {
@@ -354,7 +352,7 @@ class mySNSServer {
             // Iterate through the files
             for (File file : files) {
                 // Check if the filename starts with the original filename
-                if (file.getName().startsWith(filename)) {
+                if (file.getName().startsWith(filename + ".assinatura")) {
                     // Split the filename by dots (.)
                     String[] parts = file.getName().split("\\.");
 
@@ -371,8 +369,9 @@ class mySNSServer {
     }
 
     private void EnviaFicheiroCifrado(String fileName, String utente, String medico, ObjectOutputStream outputStream, ObjectInputStream inputStream){
-            try (FileInputStream fis = new FileInputStream(utente+"/"+fileName+".cifrado");
-                 ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            try {
+                FileInputStream fis = new FileInputStream("src/main/java/servidor/"+utente+"/"+fileName+".cifrado");
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
 
                 // Crie um buffer para ler os bytes do arquivo
                 byte[] buffer = new byte[2048];
@@ -401,9 +400,9 @@ class mySNSServer {
             outputStream.writeBoolean(existeFicheiroChaveSecreta);
             outputStream.flush(); // Certifique-se de esvaziar o buffer para garantir que os dados sejam enviados imediatamente
 
-            try (FileInputStream fis = new FileInputStream(utente+"/"+fileName+".chave_secreta."+utente);
-
-                 ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            try {
+                FileInputStream fis = new FileInputStream("src/main/java/servidor/"+utente+"/"+fileName+".chave_secreta."+utente);
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
 
                 // Crie um buffer para ler os bytes do arquivo
                 byte[] buffer = new byte[2048];
@@ -425,9 +424,10 @@ class mySNSServer {
         }
 
         private void EnviaFicheiroSeguro(String fileName, String utente, String medico, ObjectOutputStream outputStream, ObjectInputStream inputStream){
-            try (FileInputStream fis = new FileInputStream(utente+"/"+fileName+".seguro");
-                 ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            try {
 
+                FileInputStream fis = new FileInputStream("src/main/java/servidor/"+utente+"/"+fileName+".seguro");
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
                 // Crie um buffer para ler os bytes do arquivo
                 byte[] buffer = new byte[2048];
                 int bytesRead;
@@ -450,8 +450,10 @@ class mySNSServer {
         }
 
         private void EnviaFicheiroAssinatura(String fileName, String utente, String medico, ObjectOutputStream outputStream, ObjectInputStream inputStream){
-            try (FileInputStream fis = new FileInputStream(utente+"/"+fileName+".assinatura."+medico);
-                ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            try {
+                FileInputStream fis = new FileInputStream("src/main/java/servidor/"+utente+"/"+fileName+".assinatura."+medico);
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
                 System.out.println("entra envia assinatura");
                 // Crie um buffer para ler os bytes do arquivo
                 byte[] buffer = new byte[2048];
@@ -479,7 +481,7 @@ class mySNSServer {
         }
 
         private boolean verificaFicheiroServer(String filename, String utente, String medico) throws IOException {
-            File diretorio = new File(utente + "/" + filename);
+            File diretorio = new File("src/main/java/servidor/"+utente + "/" + filename);
             if(diretorio.exists()){
                 return true;
             }

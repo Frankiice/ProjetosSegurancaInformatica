@@ -37,39 +37,56 @@ public class mySNS {
         String opcaoUsername = args[2];
         String opcao = "";
         out.writeObject(opcaoUsername);
-        switch (opcaoUsername){
-            case "-u":
-                out.writeObject(args[3]);
-                opcao = "-g";
-                break;
-            case "-m":
-                opcao = args[6];
-                out.writeObject(args[3]);
-                out.writeObject(args[5]);
-                break;
+        // switch (opcaoUsername){
+        //     case "-u":
+        //         out.writeObject(args[3]);
+        //         opcao = "-g";
+        //         break;
+        //     case "-m":
+        //         opcao = args[6];
+        //         out.writeObject(args[3]);
+        //         out.writeObject(args[5]);
+        //         break;
+        // }
+        if ("-u".equals(opcaoUsername)) {
+            out.writeObject(args[3]);
+            opcao = "-g";
+        } else if ("-m".equals(opcaoUsername)) {
+            opcao = args[6];
+            out.writeObject(args[3]);
+            out.writeObject(args[5]);
         }
         //Envia ao servidor o comando a executar
         out.writeObject(opcao);
-        switch(opcao) {
-            case "-sc":
-                DoScOption(args, in, out);
-                //Nao enviar ficheiro, apenas nome e bytes(olhar o do gabriel como exemplo)
-                //Fazer o decifrar
-                //adicionar certificado do utente no keystore do medico
-                break;
-            case "-sa":
-                DoSaOption(args, in, out);
-                break;
-            case "-se":
-                DoSeOption(args, in, out);
-                break;
-            case "-g":
-                System.out.println("Dentro da -g option:");
-                doGoption(args, in, out);
-                break;
-            case "":
+        // switch(opcao) {
+        //     case "-sc":
+        //         DoScOption(args, in, out);
+        //         //Nao enviar ficheiro, apenas nome e bytes(olhar o do gabriel como exemplo)
+        //         //Fazer o decifrar
+        //         //adicionar certificado do utente no keystore do medico
+        //         break;
+        //     case "-sa":
+        //         DoSaOption(args, in, out);
+        //         break;
+        //     case "-se":
+        //         DoSeOption(args, in, out);
+        //         break;
+        //     case "-g":
+        //         System.out.println("Dentro da -g option:");
+        //         doGoption(args, in, out);
+        //         break;
+        //     case "":
+        // }
+        if ("-sc".equals(opcao)) {
+            DoScOption(args, in, out);
+        } else if ("-sa".equals(opcao)) {
+            DoSaOption(args, in, out);
+        } else if ("-se".equals(opcao)) {
+            DoSeOption(args, in, out);
+        } else if ("-g".equals(opcao)) {
+            doGoption(args, in, out);
         }
-
+        
     }
     public static boolean enviaFicheiro(String filename, String extension, String aliasUtente, byte[] content, ObjectInputStream in, ObjectOutputStream out) throws IOException {
         try{
@@ -117,8 +134,8 @@ public class mySNS {
             String aliasMedico = args[3];
             String aliasUtente = args[5];
             String defaultKeystorePassword = "123456";
-            //PrivateKey privateKey = getPrivateKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
-            PrivateKey privateKey = getPrivateKey("keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
+            PrivateKey privateKey = getPrivateKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
+            //PrivateKey privateKey = getPrivateKey("keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
             // envia 3 ficheiros para o servidor para cada ficheiro lido
             for (int i = args.length-1; i>=7; i--){
                 String filename = args[i];
@@ -130,16 +147,22 @@ public class mySNS {
                     continue;
                 }
                 byte[] ficheiroEmBytes = leFicheiro(filename);
-                // Assina o ficheiro e ENVIA a assinatura para o servidor
-                assinaFicheiro(filename, ficheiroEmBytes, aliasMedico, aliasUtente, privateKey, defaultKeystorePassword, in, out);
+
                 // Gera a chave secreta AES para ser usada na cifra
                 SecretKey secretKey = GeraChaveSecretaAES();
+
+                // Cifra a chave simetrica com a chave do utente
+                byte[] chaveSimetrica = CifraChaveSimetrica(secretKey, filename, aliasMedico, aliasUtente, out, in);
+                if (chaveSimetrica == null) {
+                    System.out.println("Chave cifrada nao é válida para "+ filename + ", terminando...");
+                    return;
+                }
+                // Assina o ficheiro e ENVIA a assinatura para o servidor
+                assinaFicheiro(filename, ficheiroEmBytes, aliasMedico, aliasUtente, privateKey, defaultKeystorePassword, in, out);
                 // Cifra o ficheiro utilizando a chave AES e retorna o conteudo em bytes
                 byte[] encryptedBytes = DoCifraSimetrica(aliasUtente,filename, secretKey, out, in);
                 // ENVIA o ficheiro seguro para o servidor
                 enviaFicheiro(filename, ".seguro", aliasUtente, encryptedBytes, in, out);
-                // Cifra a chave simetrica com a chave do utente
-                byte[] chaveSimetrica = CifraChaveSimetrica(secretKey, filename, aliasMedico, aliasUtente, out, in);
                 // Envia a chave secreta cifrada para o servidor
                 enviaFicheiro(filename, ".chave_secreta." + aliasUtente, aliasUtente, chaveSimetrica, in, out);
 
@@ -176,10 +199,15 @@ public class mySNS {
             SecretKey secretKey = GeraChaveSecretaAES();
             // Cifra o ficheiro utilizando a chave AES e retorna o conteudo em bytes
             byte[] encryptedBytes = DoCifraSimetrica(aliasUtente,fileName, secretKey, out, in);
-            // Envia o ficheiro cifrado
-            enviaFicheiro(fileName, ".cifrado", aliasUtente, encryptedBytes, in, out);
             //Cifra a chave simetrica e escreve no ficheiro <arg>.chave_secreta.<utente>
             byte[] chaveCifrada = CifraChaveSimetrica(secretKey, fileName, aliasMedico, aliasUtente, out, in);
+
+            if (chaveCifrada == null) {
+                System.out.println("Chave cifrada nao é válida para "+ fileName + ", terminando...");
+                return;
+            }
+            // Envia o ficheiro cifrado
+            enviaFicheiro(fileName, ".cifrado", aliasUtente, encryptedBytes, in, out);
             // Envia a chave secreta
             enviaFicheiro(fileName, ".chave_secreta."+aliasUtente, aliasUtente, chaveCifrada, in, out);
         }
@@ -193,10 +221,12 @@ public class mySNS {
         // Carregar keystore
         String keystorePass = "123456";
         // Obtem par de chaves do utente
-        // PrivateKey privateKey = getPrivateKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
-        // PublicKey publicKey = getPublicKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
-        PrivateKey privateKey = getPrivateKey("keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
-        PublicKey publicKey = getPublicKey("keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
+        PublicKey publicKey = getPublicKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
+        if (publicKey == null) {
+            System.out.println("Public key nao é válida");
+            return null;
+        }
+        //PublicKey publicKey = getPublicKey("keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
         // Cifra a chave simétrica com a chave pública
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.ENCRYPT_MODE, publicKey);
@@ -277,7 +307,7 @@ public class mySNS {
                     Object receivedObject = in.readObject();
                 }
 
-                Boolean signatureSignedCheck = in.readBoolean();
+                Boolean signatureSignedCheck = (Boolean) in.readBoolean();
                 System.out.println("signatureSignedCheck: " + signatureSignedCheck);
 
                 if (signatureSignedCheck) {
@@ -316,7 +346,7 @@ public class mySNS {
                     }
                 }
 
-                Boolean seguroCheck = in.readBoolean();
+                Boolean seguroCheck = (Boolean) in.readBoolean();
                 System.out.println("seguroCheck: " + seguroCheck);
 
                 if (seguroCheck) {
@@ -373,10 +403,10 @@ public class mySNS {
             String defaultKeystorePassword = "123456"; // Senha padrão da keystore
 
             // Get the public key of the medico from the keystore
-            PublicKey publicKey = getPublicKey("keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
+            PublicKey publicKey = getPublicKey("src/main/java/cliente/keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
 
             // Create object Signature to verify the signature
-            Signature signature = Signature.getInstance("MD5withRSA");
+            Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initVerify(publicKey);
 
             // Update the signature with the data of the signed file
@@ -386,12 +416,9 @@ public class mySNS {
             boolean verified = signature.verify(signatureBytes);
 
             return verified;
-        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             return false;
-        } catch (Exception e) {
-            // TODO Auto-generated catch block
-            throw new RuntimeException(e);
         }
     }
 
@@ -400,10 +427,10 @@ public class mySNS {
             String defaultKeystorePassword = "123456"; // Senha padrão da keystore
 
             // Get the public key of the medico from the keystore
-            PublicKey publicKey = getPublicKey("keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
+            PublicKey publicKey = getPublicKey("src/main/java/cliente/keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
 
             // Create object Signature to verify the signature
-            Signature signature = Signature.getInstance("MD5withRSA");
+            Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initVerify(publicKey);
 
             byte[] seguroAssinado = leFicheiro(filename + ".decifrado");
@@ -415,12 +442,10 @@ public class mySNS {
             boolean verified = signature.verify(signatureBytes);
 
             return verified;
-        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            e.printStackTrace();
-            return false;
         } catch (Exception e) {
             // TODO Auto-generated catch block
-            throw new RuntimeException(e);
+            e.printStackTrace();
+            return false;
         }
     }
 
@@ -440,7 +465,7 @@ public class mySNS {
             System.out.println("Recebi a chave!");
             // Decifra a chave cifrada usando a chave privada
             Cipher cipher = Cipher.getInstance("RSA");
-            PrivateKey privateKey = getPrivateKey("keystores/" + utente + ".keystore", utente, "123456");
+            PrivateKey privateKey = getPrivateKey("src/main/java/cliente/keystores/" + utente + ".keystore", utente, "123456");
             cipher.init(Cipher.DECRYPT_MODE, privateKey);
             byte[] chaveDecifrada = cipher.doFinal(chaveCifrada);
 
@@ -470,7 +495,7 @@ public class mySNS {
 
             // Obter a chave privada da keystore
             // PrivateKey privateKey = getPrivateKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
-            PrivateKey privateKey = getPrivateKey("keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
+            PrivateKey privateKey = getPrivateKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
 
             // envia quantidade de ficheiros
             out.writeInt(args.length-7);
@@ -486,6 +511,10 @@ public class mySNS {
                 // Le o ficheiro e transforma em bytes
                 byte[] ficheiroEmBytes = leFicheiro(args[i]);
                 // Assina o ficheiro lido e envia a assinatura para o servidor
+                if (privateKey == null) {
+                    System.out.println("Keystore nao existe/Private key nao é válida");
+                    return;
+                }
                 assinaFicheiro(args[i], ficheiroEmBytes, aliasMedico, aliasUtente, privateKey, defaultKeystorePassword, in, out);
                 // Enviar o ficheiro que foi previamente assinado para o servidor
                 enviaFicheiro(args[i], ".assinado", aliasUtente, ficheiroEmBytes, in, out);
@@ -503,7 +532,7 @@ public class mySNS {
 
         try {
             // Criar objeto Signature para assinar o arquivo
-            Signature signature = Signature.getInstance("MD5withRSA");
+            Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initSign(privateKey);
 
             // Atualizar a assinatura com os dados do arquivo
@@ -517,7 +546,7 @@ public class mySNS {
             enviaFicheiro(filename, extensaoAssinatura, aliasUtente, signatureBytes, in, out);
 
             return ficheiroParaAssinar;
-        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             return null;
         }
@@ -542,7 +571,7 @@ public class mySNS {
             PrivateKey key = (PrivateKey) keystore.getKey(alias, keystorePassword.toCharArray());
             return (PrivateKey) key;
         } catch (Exception e) {
-            // e.printStackTrace();
+            //e.printStackTrace();
             System.out.println("A keystore não existe/o path da keystore nao está correto");
             return null;
         }
@@ -562,7 +591,7 @@ public class mySNS {
                 throw new IllegalArgumentException("Certificado nao encontrado para o alias '" + alias + "'");
             }
         } catch (Exception e) {
-            // e.printStackTrace();
+            //e.printStackTrace();
             System.out.println("A keystore não existe/o path da keystore nao está correto");
             return null;
         }

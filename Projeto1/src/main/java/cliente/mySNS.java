@@ -76,7 +76,6 @@ public class mySNS {
             String nomeFicheiro = filename + extension;
             out.writeUTF(nomeFicheiro); // envia nome do ficheiro
             out.flush();
-
             // Recebe do servidor um boolean que e true caso o ficheiro ja exista no servidor.
             boolean ficheiroDuplicado = (Boolean) in.readBoolean(); // recebe confirmacao do servidor se o ficheiro esta duplicado
             if(ficheiroDuplicado)
@@ -86,8 +85,17 @@ public class mySNS {
             }
             else{
                 // Envia conteudo do ficheiro apos receber confirmacao que o ficheiro nao existe no servidor
+                long fileSize = (long) content.length;
+                // Envia tamanho do ficheiro
+                out.writeLong(fileSize);
+                System.out.println("enviei tamanho: " + fileSize);
                 out.writeObject(content);
                 out.flush();
+                String recebeuCompleto = in.readUTF();
+                if(recebeuCompleto.equals("NOK")){
+                    System.out.println("Ocorreu um erro com o envio do ficheiro, o servidor nao recebeu o conteudo por completo");
+                    return false;
+                }
                 boolean confirmacaoRececao = (Boolean) in.readBoolean();
                 if(confirmacaoRececao){
                     System.out.println("Ficheiro " + nomeFicheiro + " foi enviado para o servidor no diretorio de " + aliasUtente);
@@ -97,9 +105,7 @@ public class mySNS {
                     System.out.println("Ocorreu um erro ao enviar o ficheiro " + nomeFicheiro);
                     return false;
                 }
-
             }
-
         }catch (Exception e){
             return false;
         }
@@ -216,7 +222,7 @@ public class mySNS {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         CipherOutputStream cos = new CipherOutputStream(byteArrayOutputStream, cipher);
 
-        byte[] buffer = new byte[1024];
+        byte[] buffer = new byte[2048];
         int bytesRead;
         while ((bytesRead = inputFile.read(buffer)) != -1) {
             cos.write(buffer, 0, bytesRead);
@@ -242,11 +248,11 @@ public class mySNS {
 
             out.writeInt(args.length - 5); // 2
             out.flush();
-
             // Receber e verificar cada ficheiro
             for (int i = 0; i < numFiles; i++) {
-                boolean verifiedSignature = false;
-                boolean verifiedCifrado = false;
+                Object verifiedCifrado = null;
+                Object verifiedSignature = null;
+                Object verifiedSeguro = null;
                 // Enviar o nome do ficheiro
                 String filename = args[5+i];
                 System.out.println("Verificação do ficheiro: " + filename + "...");
@@ -267,7 +273,9 @@ public class mySNS {
                 out.flush();
 
                 // Ignorar lol
-                Object receivedObject = in.readObject();
+                if (i == 0) {
+                    Object receivedObject = in.readObject();
+                }
 
                 Boolean signatureSignedCheck = in.readBoolean();
                 System.out.println("signatureSignedCheck: " + signatureSignedCheck);
@@ -291,10 +299,10 @@ public class mySNS {
                     String medico = in.readUTF(); // 5
 
                     // Verificar a assinatura
-                    verifiedSignature = verificaAssinatura(filename, in, out, signedBytes, signatureBytes, medico);
+                    verifiedSignature = verificaAssinatura(filename, in, out, signedBytes, signatureBytes, medico, nomeUtente);
                 }
 
-                Boolean chaveCifradoCheck = in.readBoolean();
+                Boolean chaveCifradoCheck = (Boolean) in.readBoolean();
                 System.out.println("chaveCifradoCheck: " + chaveCifradoCheck);
 
                 if (chaveCifradoCheck) {
@@ -308,17 +316,48 @@ public class mySNS {
                     }
                 }
 
-                // Imprimir o resultado da verificação
-                if (verifiedSignature) {
-                    System.out.println("Assinatura verificada com sucesso para o ficheiro: " + filename);
-                } else {
-                    System.out.println("Não foi possível verificar a assinatura para o ficheiro: " + filename);
+                Boolean seguroCheck = in.readBoolean();
+                System.out.println("seguroCheck: " + seguroCheck);
+
+                if (seguroCheck) {
+                    Decifra(filename, nomeUtente, out, in);
+                    byte[] assinaturaSeguroBytes = (byte[]) in.readObject();
+
+                    String medico = in.readUTF();
+
+                    verifiedSeguro = verificaAssinaturaSeguro(filename, in, out, assinaturaSeguroBytes, medico, nomeUtente);
                 }
 
-                if (verifiedCifrado) {
-                    System.out.println("Ficheiro decifrado com sucesso para o ficheiro: " + filename);
-                } else {
-                    System.out.println("Não foi possível decifrar o ficheiro: " + filename);
+                // Imprimir o resultado da verificação
+                if (verifiedSignature != null) {
+                    boolean signatureVerified = (Boolean) verifiedSignature;
+                    if (signatureVerified) {
+                        System.out.println("Assinatura verificada com sucesso para o ficheiro: " + filename);
+                    } else {
+                        System.out.println("Não foi possível verificar a assinatura para o ficheiro: " + filename);
+                    }
+                }
+
+                if (verifiedCifrado != null) {
+                    boolean cifradoVerified = (Boolean) verifiedCifrado;
+                    if (cifradoVerified) {
+                        System.out.println("Ficheiro decifrado com sucesso para o ficheiro: " + filename);
+                    } else {
+                        System.out.println("Não foi possível decifrar o ficheiro: " + filename);
+                    }
+                }
+
+                if (verifiedSeguro != null) {
+                    boolean seguroVerified = (Boolean) verifiedSeguro;
+                    if (seguroVerified) {
+                        System.out.println("Ficheiro seguro decifrado e verificado com sucesso para o ficheiro: " + filename);
+                    } else {
+                        System.out.println("Não foi possível verificar a assinatura para o ficheiro seguro: " + filename);
+                    }
+                }
+                
+                if (verifiedSignature == null && verifiedCifrado == null && verifiedSeguro == null) {
+                    System.out.println("Não foi possível verificar ou decifrar qualquer ficheiro");
                 }
 
             }
@@ -329,12 +368,12 @@ public class mySNS {
         }
     }
 
-    private static boolean verificaAssinatura(String filename, ObjectInputStream in, ObjectOutputStream out, byte[] signedBytes, byte[] signatureBytes, String aliasMedico) throws IOException, ClassNotFoundException {
+    private static boolean verificaAssinatura(String filename, ObjectInputStream in, ObjectOutputStream out, byte[] signedBytes, byte[] signatureBytes, String aliasMedico, String utente) throws IOException, ClassNotFoundException {
         try {
             String defaultKeystorePassword = "123456"; // Senha padrão da keystore
 
             // Get the public key of the medico from the keystore
-            PublicKey publicKey = getPublicKey("keystores/" + aliasMedico + ".keystore", aliasMedico, defaultKeystorePassword);
+            PublicKey publicKey = getPublicKey("keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
 
             // Create object Signature to verify the signature
             Signature signature = Signature.getInstance("MD5withRSA");
@@ -342,6 +381,35 @@ public class mySNS {
 
             // Update the signature with the data of the signed file
             signature.update(signedBytes);
+
+            // Verify the signature
+            boolean verified = signature.verify(signatureBytes);
+
+            return verified;
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            e.printStackTrace();
+            return false;
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static boolean verificaAssinaturaSeguro(String filename, ObjectInputStream in, ObjectOutputStream out, byte[] signatureBytes, String aliasMedico, String utente) throws IOException, ClassNotFoundException {
+        try {
+            String defaultKeystorePassword = "123456"; // Senha padrão da keystore
+
+            // Get the public key of the medico from the keystore
+            PublicKey publicKey = getPublicKey("keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
+
+            // Create object Signature to verify the signature
+            Signature signature = Signature.getInstance("MD5withRSA");
+            signature.initVerify(publicKey);
+
+            byte[] seguroAssinado = leFicheiro(filename + ".decifrado");
+
+            // Update the signature with the data of the signed file
+            signature.update(seguroAssinado);
 
             // Verify the signature
             boolean verified = signature.verify(signatureBytes);
@@ -368,15 +436,6 @@ public class mySNS {
         }
         else {
             // Se o arquivo existe no servidor, então lemos os bytes do arquivo cifrado
-/*            ByteArrayOutputStream bufferStream = new ByteArrayOutputStream();
-            int bytesRead;
-            byte[] buffer = new byte[1024];
-            System.out.println("Tudo certo ate aqui");
-            while ((bytesRead = in.read(buffer)) != -1) {
-                bufferStream.write(buffer, 0, bytesRead);
-            }
-            System.out.println("passei por la");
-  */
             byte[] chaveCifrada = (byte[]) in.readObject();
             System.out.println("Recebi a chave!");
             // Decifra a chave cifrada usando a chave privada
@@ -391,18 +450,7 @@ public class mySNS {
             cipherAES.init(Cipher.DECRYPT_MODE, chaveSecreta);
 
             // Leia os bytes do arquivo cifrado
-  /*          ByteArrayOutputStream bufferStreamCifrado = new ByteArrayOutputStream();
-
-            int bytesReadCifrado;
-            byte[] bufferCifrado = new byte[1024];
-            System.out.println("Agora estou aqui");
-            while ((bytesReadCifrado = in.read(bufferCifrado)) != -1) {
-                bufferStreamCifrado.write(bufferCifrado, 0, bytesReadCifrado);
-            }
-            System.out.println("TTambem passei");
-    */
             byte[] arquivoCifrado = (byte[]) in.readObject();
-
 
             // Decifre os bytes do arquivo cifrado
             byte[] arquivoDecifrado = cipherAES.doFinal(arquivoCifrado);

@@ -121,8 +121,6 @@ class mySNSServer {
                         int numFiles = inStream.readInt(); // 2
                         System.out.println("num files:"+numFiles);
                         for (int i = 0; i < numFiles; i++) {
-                            // Boolean fileExists = (Boolean) inStream.readObject(); // 1-1 1-2
-                            // if(fileExists) {
                             String filename = (String) inStream.readUTF(); // 3
                             System.out.println("Verificacao do ficheiro:"+filename);
                             String medico = getMedicoName(utente, filename);
@@ -131,19 +129,23 @@ class mySNSServer {
                             } else {
                                 nomeMedico = "";
                             }
+
                             // Assuming signature file has the same name as the original file with ".assinatura" extension
                             String signatureFilename = filename + ".assinatura." + nomeMedico;
                             String signedFilename = filename + ".assinado";
                             String cifradoFilename = filename + ".cifrado";
                             String chaveSecretaFilename = filename + ".chave_secreta." + nomeUtente;
+                            String seguroFilename = filename + ".seguro";
 
                             Boolean verifiedSignature = verificaFicheiroServer(signatureFilename, utente, nomeMedico);
                             Boolean verifiedSigned = verificaFicheiroServer(signedFilename, utente, nomeMedico);
                             Boolean verifiedCifrado = verificaFicheiroServer(cifradoFilename, utente, nomeMedico);
                             Boolean verifiedChaveSecreta = verificaFicheiroServer(chaveSecretaFilename, utente, nomeMedico);
+                            Boolean verifiedSeguro = verificaFicheiroServer(seguroFilename, utente, nomeMedico);
 
                             Boolean signatureSignedCheck = false;
                             Boolean chaveCifradoCheck = false;
+                            Boolean seguroCheck = false;
 
                             if (verifiedSignature && verifiedSigned) {
                                 signatureSignedCheck = true;
@@ -165,11 +167,18 @@ class mySNSServer {
                                 outStream.writeBoolean(chaveCifradoCheck);
                                 outStream.flush();
                             }
-                            // } else {
-                            //     System.out.println("O ficheiro não existe no cliente.");
-                            //     continue;
-                            // }
-                            
+
+                            if (verifiedSeguro && verifiedChaveSecreta && verifiedSignature) {
+                                seguroCheck = true;
+                                outStream.writeBoolean(seguroCheck);
+                                outStream.flush();
+                                EnviaChaveSecreta(filename, utente, nomeMedico, outStream, inStream);
+                                EnviaFicheiroSeguro(filename, utente, nomeMedico, outStream, inStream);
+                                EnviaFicheiroAssinatura(filename, utente, nomeMedico, outStream, inStream);
+                            } else {
+                                outStream.writeBoolean(seguroCheck);
+                                outStream.flush();
+                            }
                         }
                         break;
                     case "":
@@ -201,30 +210,35 @@ class mySNSServer {
         private boolean recebeFicheiros(String utente, String medico, ObjectOutputStream out, ObjectInputStream in, int quantidadeFicheiros){
             try{
                 for(int i = 0; i < quantidadeFicheiros; i++) {
-
                     // Receber o nome do ficheiro
                     String filename = (String) in.readUTF();
                     if (filename.equals("NOK")) {
                         System.out.println("O servidor não recebeu o ficheiro");
                         continue;
                     }
-
                     // Verifica se o ficheiro existe
                     boolean ficheiroJaExiste = verificaFicheiroServer(filename, utente, medico);
-
                     // Envia para o cliente acerca da existencia do ficheiro
                     out.writeBoolean(ficheiroJaExiste);
                     out.flush();
                     if(ficheiroJaExiste){
                         continue;
                     }
-
+                    // Recebe tamanho do ficheiro
+                    long fileSize = (long) in.readLong();
+                    System.out.println("Recebi tamanho: " + fileSize);
                     // Recebe o conteúdo do ficheiro como um array de bytes
                     byte[] fileBytes = (byte[]) in.readObject();
-
+                    if(fileBytes.length != fileSize){
+                        out.writeUTF("NOK");
+                        System.out.println("O servidor recebeu um ficheiro com tamanho diferente do esperado.");
+                        continue;
+                    }
+                    else{
+                        out.writeUTF("OK");
+                    }
                     // Salvar o conteúdo do ficheiro em um novo arquivo
                     salvarFicheiro(filename, fileBytes, utente);
-
                     // Confirmar ao cliente que o ficheiro foi recebido com sucesso
                     out.writeBoolean(true);
                     out.flush();
@@ -361,7 +375,7 @@ class mySNSServer {
                  ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
 
                 // Crie um buffer para ler os bytes do arquivo
-                byte[] buffer = new byte[1024];
+                byte[] buffer = new byte[2048];
                 int bytesRead;
 
                 // Leia os bytes do arquivo e escreva-os no ByteArrayOutputStream
@@ -382,9 +396,9 @@ class mySNSServer {
         }
 
         private void EnviaChaveSecreta(String fileName, String utente, String medico, ObjectOutputStream outputStream, ObjectInputStream inputStream) throws IOException {
-            boolean existeFicheiroCifrado = verificaFicheiroServer(fileName+".cifrado", utente, medico);
+            // boolean existeFicheiroCifrado = verificaFicheiroServer(fileName+".cifrado", utente, medico);
             boolean existeFicheiroChaveSecreta = verificaFicheiroServer(fileName+".chave_secreta."+utente, utente, medico);
-            outputStream.writeBoolean(existeFicheiroChaveSecreta && existeFicheiroCifrado);
+            outputStream.writeBoolean(existeFicheiroChaveSecreta);
             outputStream.flush(); // Certifique-se de esvaziar o buffer para garantir que os dados sejam enviados imediatamente
 
             try (FileInputStream fis = new FileInputStream(utente+"/"+fileName+".chave_secreta."+utente);
@@ -392,7 +406,7 @@ class mySNSServer {
                  ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
 
                 // Crie um buffer para ler os bytes do arquivo
-                byte[] buffer = new byte[1024];
+                byte[] buffer = new byte[2048];
                 int bytesRead;
 
                 // Leio os bytes do arquivo
@@ -406,6 +420,60 @@ class mySNSServer {
                 System.out.println("Tamanho do arquivo em bytes: " + fileBytes.length);
                 outputStream.writeObject(fileBytes);
             } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void EnviaFicheiroSeguro(String fileName, String utente, String medico, ObjectOutputStream outputStream, ObjectInputStream inputStream){
+            try (FileInputStream fis = new FileInputStream(utente+"/"+fileName+".seguro");
+                 ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+
+                // Crie um buffer para ler os bytes do arquivo
+                byte[] buffer = new byte[2048];
+                int bytesRead;
+
+                // Leia os bytes do arquivo e escreva-os no ByteArrayOutputStream
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    bos.write(buffer, 0, bytesRead);
+                }
+
+                // Obtenha os bytes lidos do ByteArrayOutputStream
+                byte[] fileBytes = bos.toByteArray();
+
+                // Faça o que quiser com o array de bytes, como enviar pela rede, etc.
+                // Neste exemplo, apenas exibiremos o tamanho do array de bytes
+                System.out.println("Tamanho do arquivo em bytes: " + fileBytes.length);
+                outputStream.writeObject(fileBytes);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void EnviaFicheiroAssinatura(String fileName, String utente, String medico, ObjectOutputStream outputStream, ObjectInputStream inputStream){
+            try (FileInputStream fis = new FileInputStream(utente+"/"+fileName+".assinatura."+medico);
+                ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+                System.out.println("entra envia assinatura");
+                // Crie um buffer para ler os bytes do arquivo
+                byte[] buffer = new byte[2048];
+                int bytesRead;
+
+                // Leia os bytes do arquivo e escreva-os no ByteArrayOutputStream
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    bos.write(buffer, 0, bytesRead);
+                }
+
+                // Obtenha os bytes lidos do ByteArrayOutputStream
+                byte[] fileBytes = bos.toByteArray();
+
+                // Faça o que quiser com o array de bytes, como enviar pela rede, etc.
+                // Neste exemplo, apenas exibiremos o tamanho do array de bytes
+                System.out.println("Tamanho do arquivo em bytes: " + fileBytes.length);
+                outputStream.writeObject(fileBytes);
+                outputStream.flush();
+
+                outputStream.writeUTF(medico);
+                outputStream.flush();
+            } catch (IOException e) {   
                 e.printStackTrace();
             }
         }

@@ -195,7 +195,6 @@ public class mySNS {
         // Obtem par de chaves do utente
         // PrivateKey privateKey = getPrivateKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
         // PublicKey publicKey = getPublicKey("src/main/java/cliente/keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
-        PrivateKey privateKey = getPrivateKey("keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
         PublicKey publicKey = getPublicKey("keystores/" + aliasMedico + ".keystore", aliasUtente, keystorePass);
         // Cifra a chave simétrica com a chave pública
         Cipher cipher = Cipher.getInstance("RSA");
@@ -376,7 +375,7 @@ public class mySNS {
             PublicKey publicKey = getPublicKey("keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
 
             // Create object Signature to verify the signature
-            Signature signature = Signature.getInstance("MD5withRSA");
+            Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initVerify(publicKey);
 
             // Update the signature with the data of the signed file
@@ -403,7 +402,7 @@ public class mySNS {
             PublicKey publicKey = getPublicKey("keystores/" + utente + ".keystore", aliasMedico, defaultKeystorePassword);
 
             // Create object Signature to verify the signature
-            Signature signature = Signature.getInstance("MD5withRSA");
+            Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initVerify(publicKey);
 
             byte[] seguroAssinado = leFicheiro(filename + ".decifrado");
@@ -503,7 +502,7 @@ public class mySNS {
 
         try {
             // Criar objeto Signature para assinar o arquivo
-            Signature signature = Signature.getInstance("MD5withRSA");
+            Signature signature = Signature.getInstance("SHA256withRSA");
             signature.initSign(privateKey);
 
             // Atualizar a assinatura com os dados do arquivo
